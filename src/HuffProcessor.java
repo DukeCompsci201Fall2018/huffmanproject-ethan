@@ -58,13 +58,83 @@ public class HuffProcessor {
 	 * @param out
 	 *            Buffered bit stream writing to the output file.
 	 */
-	public void decompress(BitInputStream in, BitOutputStream out){
+	public void decompress(BitInputStream in, BitOutputStream out)
+	{
 
-		while (true){
-			int val = in.readBits(BITS_PER_WORD);
-			if (val == -1) break;
-			out.writeBits(BITS_PER_WORD, val);
-		}
+		int val = in.readBits(BITS_PER_INT);
+		if (val != HUFF_TREE)
+			throw new HuffException("illegal header starts with " + val);
+
+		HuffNode tree = getTree(in);
+		
+
+		readCompressedBits(tree, in, out);
+
 		out.close();
+
+	}
+
+	/**
+	 * Helper method for extracting the encoding at the beginning of the
+	 * compressed file.
+	 * 
+	 * @param in buffered bit stream of the file from which tree is read.
+	 * @return the root node of the tree
+	 */
+	private HuffNode getTree(BitInputStream in)
+	{
+		int bit = in.readBits(1);
+		if (bit == -1) throw new HuffException("failed to read bits");
+		if (bit == 0)
+		{
+			HuffNode left = getTree(in);
+			HuffNode right = getTree(in);
+			return new HuffNode(0,0,left,right);
+		}
+		else 
+		{
+			int value = in.readBits(BITS_PER_WORD+1);
+			System.out.println(value);
+			return new HuffNode(value,0,null,null);
+		}
+
+	}
+
+	/**
+	 * helper method for reading from the compressed file and writing
+	 * to output after extracting the encoding tree
+	 * @param root Root node of the encoding tree to be used
+	 * @param in
+	 *            Buffered bit stream of the file to be decompressed.
+	 * @param out
+	 *            Buffered bit stream writing to the output file.
+	 */
+	private void readCompressedBits(HuffNode root, BitInputStream in, BitOutputStream out)
+	{
+		HuffNode current = root; 
+		while (true)
+		{
+			int bits = in.readBits(1);
+			if (bits == -1)
+			{
+				throw new HuffException("bad input, no PSEUDO_EOF");
+			}
+			else 
+			{ 
+				if (bits == 0) current = current.myLeft;
+				else current = current.myRight;
+
+				if (current.myLeft == null && current.myRight == null)
+				{
+					if (current.myValue == PSEUDO_EOF) 
+						break;   // out of loop
+					else
+					{
+						out.writeBits(BITS_PER_WORD, current.myValue);
+						current = root; // start back after leaf
+					}
+				}
+			}
+		}
 	}
 }
